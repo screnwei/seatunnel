@@ -46,6 +46,8 @@ public interface SourceReader<T, SplitT extends SourceSplit>
     /**
      * Generate the next batch of records.
      *
+     * 抽取数据的主要方法，在这个方法中每个连接器都会实现从自己相应的数据源中抽取数据，转换成seatunnel的内部数据结构SeaTunnelRow，然后再添加到Collector中
+     *
      * @param output output collector.
      * @throws Exception if error occurs.
      */
@@ -53,6 +55,8 @@ public interface SourceReader<T, SplitT extends SourceSplit>
 
     /**
      * Get the current split checkpoint state by checkpointId.
+     *
+     * 做checkpoint时会被调用, 需要reader记录一些状态, 从而可以进行后续的容错
      *
      * <p>If the source is bounded, checkpoint is not triggered.
      *
@@ -64,6 +68,8 @@ public interface SourceReader<T, SplitT extends SourceSplit>
 
     /**
      * Add the split checkpoint state to reader.
+     *
+     * reader接收split enumerator分配给自己的任务后的相关处理
      *
      * @param splits split checkpoint state.
      */

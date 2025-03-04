@@ -1,0 +1,58 @@
+{
+  "sink": [
+    {
+      "base-url": "jdbc:mysql://10.56.130.162:8039",
+      "enable_upsert_delete": true,
+      "password": "rtaadmin",
+      "database": "test_20250224",
+      "batch_max_rows": "10240",
+      "save_mode_create_template": "CREATE TABLE IF NOT EXISTS `${database}`.`${table_name}` ( ID BIGINT NOT NULL, ${rowtype_fields} ) ENGINE = OLAP PRIMARY KEY (${rowtype_primary_key}) DISTRIBUTED BY HASH (${rowtype_primary_key}) PROPERTIES (\"replication_num\" = \"1\");",
+      "starrocks.config": {
+        "format": "JSON",
+        "strip_outer_array": true
+      },
+      "batch_max_bytes": "52428800",
+      "nodeUrls": [
+        "10.56.130.162:8030"
+      ],
+      "plugin_name": "StarRocks",
+      "table": "customers",
+      "username": "root"
+    }
+  ],
+  "source": [
+    {
+      "base-url": "jdbc:oracle:thin:@//10.56.130.162:8521/LHRPDB1",
+      "password": "mixdb",
+      "skip_analyze": "true",
+      "startup.mode": "initial",
+      "debezium": {
+        "event.processing.failure.handling.mode": "warn",
+        "oracle.jdbc.timezoneAsRegion": "false",
+        "log.mining.continuous.mine": "true",
+        "database.tablename.case.insensitive": "false",
+        "database.name": "CDB$ROOT",
+        "log.mining.query.timeout": "10",
+        "database.pdb.name":"LHRPDB1"
+      },
+      "table-names": [
+        "LHRPDB1.TEST.CUSTOMERS"
+      ],
+      "database-names": [
+        "LHRPDB1"
+      ],
+      "schema-names": [
+        "TEST"
+      ],
+      "plugin_name": "Oracle-CDC",
+      "use_select_count ": "true",
+      "username": "c##mixdb",
+      "schema-changes.enabled": true
+    }
+  ],
+  "env": {
+    "job.mode": "STREAMING",
+    "execution.parallelism": 1,
+    "checkpoint.interval": 10000
+  }
+}

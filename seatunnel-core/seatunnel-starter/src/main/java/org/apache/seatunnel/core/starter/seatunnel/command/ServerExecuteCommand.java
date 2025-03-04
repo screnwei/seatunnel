@@ -53,6 +53,7 @@ public class ServerExecuteCommand implements Command<ServerCommandArgs> {
             if (EngineConfig.ClusterRole.MASTER.toString().equalsIgnoreCase(clusterRole)) {
                 seaTunnelConfig.getEngineConfig().setClusterRole(EngineConfig.ClusterRole.MASTER);
             } else if (EngineConfig.ClusterRole.WORKER.toString().equalsIgnoreCase(clusterRole)) {
+                //当是Worker节点时，将Hazelcast节点的类型设置为lite member，在Hazelcast中lite member是不进行数据存储的
                 seaTunnelConfig.getEngineConfig().setClusterRole(EngineConfig.ClusterRole.WORKER);
 
                 // in hazelcast lite node will not store IMap data.

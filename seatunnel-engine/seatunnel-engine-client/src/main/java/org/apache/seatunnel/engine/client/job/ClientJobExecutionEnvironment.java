@@ -126,6 +126,8 @@ public class ClientJobExecutionEnvironment extends AbstractJobEnvironment {
         // packages and dependent third-party Jar packages to the server before job execution.
         // Enabling this configuration does not require the server to hold all connector Jar
         // packages.
+        // seatunnel有个功能是不需要服务端所有节点有全部的依赖，可以在客户端中将所需依赖上传到服务端
+        // 这里的if-else是这个功能的一些逻辑判断，判断是否需要从客户端将jar包上传到服务端，从而服务端不需要维护全部的jar包
         boolean enableUploadConnectorJarPackage =
                 seaTunnelConfig.getEngineConfig().getConnectorJarStorageConfig().getEnable();
         if (enableUploadConnectorJarPackage) {
@@ -188,6 +190,7 @@ public class ClientJobExecutionEnvironment extends AbstractJobEnvironment {
     }
 
     public ClientJobProxy execute() throws ExecutionException, InterruptedException {
+        //先调用getLogicalDag生产了逻辑计划，然后构建JobImmutableInformation 信息，传递给jobClient
         LogicalDag logicalDag = getLogicalDag();
         JobImmutableInformation jobImmutableInformation =
                 new JobImmutableInformation(
@@ -196,6 +199,7 @@ public class ClientJobExecutionEnvironment extends AbstractJobEnvironment {
                         isStartWithSavePoint,
                         seaTunnelHazelcastClient.getSerializationService().toData(logicalDag),
                         jobConfig,
+                        //libs下的依赖的第三方jar包，以及connector下的的连接器
                         new ArrayList<>(jarUrls),
                         new ArrayList<>(connectorJarIdentifiers));
 

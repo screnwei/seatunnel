@@ -188,7 +188,9 @@ public class MultipleTableJobConfigParser {
     }
 
     public ImmutablePair<List<Action>, Set<URL>> parse(ClassLoaderService classLoaderService) {
+        // 将配置文件中的 env.jars添加到 commonJars中
         this.fillJobConfigAndCommonJars();
+        // 从配置文件中，将source，transform，sink的配置分别读取处理
         List<? extends Config> sourceConfigs =
                 TypesafeConfigUtils.getConfigList(
                         seaTunnelJobConfig, "source", Collections.emptyList());
@@ -199,6 +201,7 @@ public class MultipleTableJobConfigParser {
                 TypesafeConfigUtils.getConfigList(
                         seaTunnelJobConfig, "sink", Collections.emptyList());
 
+        // 获取连接器的jar包地址
         List<URL> sourceConnectorJars = getConnectorJarList(sourceConfigs, PluginType.SOURCE);
         List<URL> transformConnectorJars =
                 getConnectorJarList(transformConfigs, PluginType.TRANSFORM);
@@ -218,6 +221,7 @@ public class MultipleTableJobConfigParser {
 
         try {
             Thread.currentThread().setContextClassLoader(sourceAndTransformClassLoader);
+            // 检查DAG里面是否构成环，避免后续的构建过程陷入循环
             ConfigParserUtil.checkGraph(sourceConfigs, transformConfigs, sinkConfigs);
             LinkedHashMap<String, List<Tuple2<CatalogTable, Action>>> tableWithActionMap =
                     new LinkedHashMap<>();
@@ -232,12 +236,17 @@ public class MultipleTableJobConfigParser {
             }
             for (int configIndex = 0; configIndex < sourceConfigs.size(); configIndex++) {
                 Config sourceConfig = sourceConfigs.get(configIndex);
+                // parseSource方法为真正生成source的方法
+                // 返回值为2元组，第一个值为 当前source生成的表名称
+                // 第二个值为 CatalogTable和Action的二元组列表
+                // 由于SeaTunnel Source支持读取多表，所以第二个值为列表
                 Tuple2<String, List<Tuple2<CatalogTable, Action>>> tuple2 =
                         parseSource(configIndex, sourceConfig, sourceAndTransformClassLoader);
                 tableWithActionMap.put(tuple2._1(), tuple2._2());
             }
 
             log.info("start generating all transforms.");
+            // 这里将上面的 tableWithActionMap传递了进去，所以不需要返回值
             parseTransforms(transformConfigs, sourceAndTransformClassLoader, tableWithActionMap);
 
             Thread.currentThread().setContextClassLoader(sinkClassLoader);
@@ -245,12 +254,15 @@ public class MultipleTableJobConfigParser {
             List<Action> sinkActions = new ArrayList<>();
             for (int configIndex = 0; configIndex < sinkConfigs.size(); configIndex++) {
                 Config sinkConfig = sinkConfigs.get(configIndex);
+                // parseSink方法来生成sink
+                // 同样，传递了tableWithActionMap
                 sinkActions.addAll(
                         parseSink(configIndex, sinkConfig, sinkClassLoader, tableWithActionMap));
             }
             Set<URL> factoryUrls = getUsedFactoryUrls(sinkActions);
             return new ImmutablePair<>(sinkActions, factoryUrls);
         } finally {
+            // 将当前线程的类加载器切换为原来的类加载器
             Thread.currentThread().setContextClassLoader(parentClassLoader);
             if (classLoaderService != null) {
                 classLoaderService.releaseClassLoader(
@@ -374,12 +386,18 @@ public class MultipleTableJobConfigParser {
     public Tuple2<String, List<Tuple2<CatalogTable, Action>>> parseSource(
             int configIndex, Config sourceConfig, ClassLoader classLoader) {
         final ReadonlyConfig readonlyConfig = ReadonlyConfig.fromConfig(sourceConfig);
+        // factoryId就是我们配置里面的 source名称，例如 FakeSource， Jdbc
         final String factoryId = getFactoryId(readonlyConfig);
+        // 获取当前数据源生成的 表 名称，注意这里的表可能并不对应一个表
+        // 由于 seatunnel source支持多表读取，那么这里就会出现一对多的关系
         final String tableId =
                 readonlyConfig.getOptional(CommonOptions.PLUGIN_OUTPUT).orElse(DEFAULT_ID);
-
+        // 获取并行度
         final int parallelism = getParallelism(readonlyConfig);
 
+        // 这个地方是由于某些Source还不支持通过Factory工厂来构建，所以会有两种构建方法
+        // 后续当所有连接器都支持通过工厂来创建后，这里的代码会被删除掉，所以这次忽略掉这部分代码
+        // 方法内部是查询是否有相应的工厂类，相应的工厂类不存在时返回 true，不存在时返回false
         boolean fallback =
                 isFallback(
                         classLoader,
@@ -393,6 +411,9 @@ public class MultipleTableJobConfigParser {
             return new Tuple2<>(tableId, Collections.singletonList(tuple));
         }
 
+        // 通过FactoryUtil来创建Source
+        // 返回对象为 SeaTunnelSource实例，以及List<CatalogTable>
+        // 这里会创建我们同步任务中Source的实例，catalogtable列表表示这个数据源读取的表的表结构等信息
         Tuple2<SeaTunnelSource<Object, SourceSplit, Serializable>, List<CatalogTable>> tuple2;
         if (isStartWithSavePoint && pipelineCheckpoints != null && !pipelineCheckpoints.isEmpty()) {
             ChangeStreamTableSourceCheckpoint checkpoint =
@@ -404,6 +425,7 @@ public class MultipleTableJobConfigParser {
             tuple2 = FactoryUtil.createAndPrepareSource(readonlyConfig, classLoader, factoryId);
         }
 
+        // 获取当前source connector的jar包
         Set<URL> factoryUrls = new HashSet<>();
         factoryUrls.addAll(getSourcePluginJarPaths(sourceConfig));
 
@@ -413,6 +435,7 @@ public class MultipleTableJobConfigParser {
         SeaTunnelSource<Object, SourceSplit, Serializable> source = tuple2._1();
         source.setJobContext(jobConfig.getJobContext());
         PluginUtil.ensureJobModeMatch(jobConfig.getJobContext(), source);
+        // 构建 SourceAction
         SourceAction<Object, SourceSplit, Serializable> action =
                 new SourceAction<>(id, actionName, tuple2._1(), factoryUrls, new HashSet<>());
         action.setParallelism(parallelism);
@@ -449,26 +472,34 @@ public class MultipleTableJobConfigParser {
         jarUrls.addAll(getTransformPluginJarPaths(config));
         final List<String> inputIds = getInputIds(readonlyConfig);
 
+        // inputIds为source_table_name，根据这个值找到所依赖的上游source
         List<Tuple2<CatalogTable, Action>> inputs =
                 inputIds.stream()
                         .map(tableWithActionMap::get)
                         .filter(Objects::nonNull)
                         .flatMap(Collection::stream)
                         .collect(Collectors.toList());
+
+        // inputs为空，表明当前Transform节点找不到任何上游的节点
         if (inputs.isEmpty()) {
             if (transforms.isEmpty()) {
                 // Tolerates incorrect configuration of simple graph
+                // 未设置source_table_name，设置结果与之前不对应并且只有一个transform时
+                // 把最后一个source作为这个transform的上游表
                 inputs = findLast(tableWithActionMap);
             } else {
                 // The previous transform has not been created
+                // 所依赖的transform可能还没有创建，将本次的transform再放回队列中，后续再进行解析
                 transforms.offer(config);
                 return;
             }
         }
 
+        // 这次transform结果产生的表名称
         final String tableId =
                 readonlyConfig.getOptional(CommonOptions.PLUGIN_OUTPUT).orElse(DEFAULT_ID);
 
+        // 获取上游source的Action
         Set<Action> inputActions =
                 inputs.stream()
                         .map(Tuple2::_2)
@@ -478,8 +509,12 @@ public class MultipleTableJobConfigParser {
                 inputs.stream()
                         .map(Tuple2::_1)
                         .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        // 验证所依赖的多个上游，是否产生的表结构都相同，只有所有的表结构都相同才能进入一个transform来处理
         checkProducedTypeEquals(inputActions);
         int spareParallelism = inputs.get(0)._2().getParallelism();
+
+        // 设置并行度
         int parallelism =
                 readonlyConfig.getOptional(CommonOptions.PARALLELISM).orElse(spareParallelism);
         SeaTunnelTransform<?> transform =
@@ -490,6 +525,7 @@ public class MultipleTableJobConfigParser {
         long id = idGenerator.getNextId();
         String actionName = JobConfigParser.createTransformActionName(index, factoryId);
 
+        // 封装成Action
         TransformAction transformAction =
                 new TransformAction(
                         id,
@@ -507,6 +543,8 @@ public class MultipleTableJobConfigParser {
             actions.add(new Tuple2<>(catalogTable, transformAction));
         }
 
+        // 放入到map中，此时map里面存储了source和transform
+        // 以每个节点产生的表结构为key，action作为value
         tableWithActionMap.put(tableId, actions);
     }
 
@@ -564,6 +602,7 @@ public class MultipleTableJobConfigParser {
 
         ReadonlyConfig readonlyConfig = ReadonlyConfig.fromConfig(sinkConfig);
         String factoryId = getFactoryId(readonlyConfig);
+        // 获取当前sink节点依赖的上游节点
         List<String> inputIds = getInputIds(readonlyConfig);
 
         List<List<Tuple2<CatalogTable, Action>>> inputVertices =
@@ -571,18 +610,23 @@ public class MultipleTableJobConfigParser {
                         .map(tableWithActionMap::get)
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
+        // 当sink节点找不到上游节点时，找到最后一个节点信息作为上游节点
+        // 这里与transform不一样的地方是，不会再等其他sink节点初始化完成，因为sink节点不可能依赖与其他sink节点
         if (inputVertices.isEmpty()) {
             // Tolerates incorrect configuration of simple graph
             inputVertices = Collections.singletonList(findLast(tableWithActionMap));
         } else if (inputVertices.size() > 1) {
             for (List<Tuple2<CatalogTable, Action>> inputVertex : inputVertices) {
                 if (inputVertex.size() > 1) {
+                    // 当一个sink节点即有多个上游节点，且某个上游节点还会产生多表时抛出异常
+                    // sink可以支持多个数据源，或者单个数据源下产生多表，不能同时支持多个数据源，且某个数据源下存在多表
                     throw new JobDefineCheckException(
                             "Sink don't support simultaneous writing of data from multi-table source and other sources.");
                 }
             }
         }
 
+        //对老代码的兼容
         boolean fallback =
                 isFallback(
                         classLoader,
@@ -594,19 +638,23 @@ public class MultipleTableJobConfigParser {
         }
 
         // get jar urls
+        // 获取sink的连接器jar包
         Set<URL> jarUrls = new HashSet<>();
         jarUrls.addAll(getSinkPluginJarPaths(sinkConfig));
         List<SinkAction<?, ?, ?, ?>> sinkActions = new ArrayList<>();
 
         // union
+        // 多个数据源的情况
         if (inputVertices.size() > 1) {
             Set<Action> inputActions =
                     inputVertices.stream()
                             .flatMap(Collection::stream)
                             .map(Tuple2::_2)
                             .collect(Collectors.toCollection(LinkedHashSet::new));
+            // 检查多个上游数据源产生的表结构是否一致
             checkProducedTypeEquals(inputActions);
             Tuple2<CatalogTable, Action> inputActionSample = inputVertices.get(0).get(0);
+            // 创建sinkAction
             SinkAction<?, ?, ?, ?> sinkAction =
                     createSinkAction(
                             inputActionSample._1(),
@@ -624,6 +672,7 @@ public class MultipleTableJobConfigParser {
 
         // TODO move it into tryGenerateMultiTableSink when we don't support sink template
         // sink template
+        // 此时只有一个数据源，且此数据源下可能会产生多表，循环创建sinkAction
         for (Tuple2<CatalogTable, Action> tuple : inputVertices.get(0)) {
             SinkAction<?, ?, ?, ?> sinkAction =
                     createSinkAction(
@@ -641,6 +690,7 @@ public class MultipleTableJobConfigParser {
         Optional<SinkAction<?, ?, ?, ?>> multiTableSink =
                 tryGenerateMultiTableSink(
                         sinkActions, readonlyConfig, classLoader, factoryId, configIndex);
+        // 最终会将所创建的sink action作为返回值返回
         return multiTableSink
                 .<List<SinkAction<?, ?, ?, ?>>>map(Collections::singletonList)
                 .orElse(sinkActions);
@@ -694,6 +744,8 @@ public class MultipleTableJobConfigParser {
             String factoryId,
             int parallelism,
             int configIndex) {
+
+        // 使用工厂类创建sink
         SeaTunnelSink<?, ?, ?, ?> sink =
                 FactoryUtil.createAndPrepareSink(
                         catalogTable, readonlyConfig, classLoader, factoryId);
@@ -704,6 +756,8 @@ public class MultipleTableJobConfigParser {
         String actionName =
                 JobConfigParser.createSinkActionName(
                         configIndex, factoryId, actionConfig.getMultipleRowTableId());
+
+        // 创建sinkAction
         SinkAction<?, ?, ?, ?> sinkAction =
                 new SinkAction<>(
                         id,
@@ -714,6 +768,7 @@ public class MultipleTableJobConfigParser {
                         connectorJarIdentifiers,
                         actionConfig);
         if (!isStartWithSavePoint) {
+            // 这里需要注意，当非从savepoint启动时，会进行savemode的处理
             handleSaveMode(sink);
         }
         sinkAction.setParallelism(parallelism);
@@ -721,8 +776,14 @@ public class MultipleTableJobConfigParser {
     }
 
     public void handleSaveMode(SeaTunnelSink<?, ?, ?, ?> sink) {
+        // 当sink类支持了savemode特性时，会进行savemode处理
+        // 例如删除表，重建表，报错等
         if (SupportSaveMode.class.isAssignableFrom(sink.getClass())) {
             SupportSaveMode saveModeSink = (SupportSaveMode) sink;
+            // 当 设置savemode在client端执行时，会在client端去做这些事
+            // 我们之前出现过一个错误是当在客户端执行完毕后，到集群后任务执行出错，卡在scheduling的状态
+            // 导致数据被清空后没有及时写入
+            // 以及需要注意这个地方执行的机器到sink集群的网络是否能够连通，推荐将这个行为放到server端执行
             if (envOptions
                     .get(EnvCommonOptions.SAVEMODE_EXECUTE_LOCATION)
                     .equals(SaveModeExecuteLocation.CLIENT)) {

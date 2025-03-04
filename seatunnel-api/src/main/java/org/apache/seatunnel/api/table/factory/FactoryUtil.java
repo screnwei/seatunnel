@@ -68,6 +68,18 @@ public final class FactoryUtil {
         return restoreAndPrepareSource(options, classLoader, factoryIdentifier, null);
     }
 
+    /**
+     * 在客户端就会通过SPI加载到Source相应的Factory然后创建出对应的Source实例出来，
+     * 所以这里需要保证提交的客户端也能够与Source/Sink端建立连接，避免网络连不通的问题。
+     * @param options
+     * @param classLoader
+     * @param factoryIdentifier
+     * @param checkpoint
+     * @return
+     * @param <T>
+     * @param <SplitT>
+     * @param <StateT>
+     */
     public static <T, SplitT extends SourceSplit, StateT extends Serializable>
             Tuple2<SeaTunnelSource<T, SplitT, StateT>, List<CatalogTable>> restoreAndPrepareSource(
                     ReadonlyConfig options,
@@ -76,8 +88,12 @@ public final class FactoryUtil {
                     ChangeStreamTableSourceCheckpoint checkpoint) {
 
         try {
+            // 通过SPI加载TableSourceFactory的类，然后根据factoryIdentifier找对应的类
+            // 即 找到 souce对应的 SourceFactory
             final TableSourceFactory factory =
                     discoverFactory(classLoader, TableSourceFactory.class, factoryIdentifier);
+            // 通过Factory来创建Source实例，这个Source实例就是你任务中对应类型的Source
+            // 也就是说Source类的初始化会在Client端创建一次，需要注意这里的环境是否能够连接到该Source
             SeaTunnelSource<T, SplitT, StateT> source;
             if (factory instanceof ChangeStreamTableSourceFactory && checkpoint != null) {
                 ChangeStreamTableSourceFactory changeStreamTableSourceFactory =
@@ -92,9 +108,12 @@ public final class FactoryUtil {
             }
             List<CatalogTable> catalogTables;
             try {
+                // 获取 source会产生的表 列表。包含了字段，数据类型，分区信息等
                 catalogTables = source.getProducedCatalogTables();
             } catch (UnsupportedOperationException e) {
                 // TODO remove it when all connector use `getProducedCatalogTables`
+                // 为了兼容有些Connector未实现getProducedCatalogTables方法
+                // 调用老的获取数据类型的方法，并转换为Catalog
                 SeaTunnelDataType<T> seaTunnelDataType = source.getProducedType();
                 final String tableId =
                         options.getOptional(CommonOptions.PLUGIN_OUTPUT).orElse(DEFAULT_ID);
@@ -108,6 +127,7 @@ public final class FactoryUtil {
                             .map(CatalogTable::getTableId)
                             .map(TableIdentifier::toString)
                             .collect(Collectors.joining(",")));
+            // 解析参数，当设置为 SHARDING 时，仅取第一个表结构
             if (options.get(SourceOptions.DAG_PARSING_MODE) == ParsingMode.SHARDING) {
                 CatalogTable catalogTable = catalogTables.get(0);
                 catalogTables.clear();

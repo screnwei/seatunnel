@@ -41,11 +41,16 @@ public interface SinkWriter<T, CommitInfoT, StateT> {
     /**
      * write data to third party data receiver.
      *
+     * 当接收到一条上游数据时, 写入到目标数据库的实现；
+     *
      * @param element the data need be written.
      * @throws IOException throw IOException when write data failed.
      */
     void write(T element) throws IOException;
 
+    /**
+     * 当上游数据的表结构变动后, 下游如何进行相应的实现, 例如增删字段, 修改字段名称. 但这个跟具体的实现有关；
+     */
     /** @deprecated instead by {@link SupportSchemaEvolutionSinkWriter} TODO: remove this method */
     @Deprecated
     default void applySchemaChange(SchemaChangeEvent event) throws IOException {}
@@ -55,6 +60,9 @@ public interface SinkWriter<T, CommitInfoT, StateT> {
      * need to use 2pc, you can return the commit info in this method, and receive the commit info
      * in {@link SinkCommitter#commit(List)}. If this method failed (by throw exception), **Only**
      * Spark engine will call {@link #abortPrepare()}
+     *
+     * 当需要二阶段提交时, 生成此次需要提交的信息, 该信息将交给SinkCommitter/SinkAggregatedCommitter来进行二阶段提交.
+     * 这个方法的调用, 是在做checkpoint时会被调用, 也就是每次checkpoint时才会提交刚刚产生的信息到目标端连接器；
      *
      * @return the commit info need to commit
      */

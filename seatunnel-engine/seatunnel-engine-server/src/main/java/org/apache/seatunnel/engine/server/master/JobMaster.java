@@ -212,8 +212,11 @@ public class JobMaster {
     }
 
     public synchronized void init(long initializationTimestamp, boolean restart) throws Exception {
+        // 服务端接收到客户端传递过来的消息是一个二进制的对象
+        // 首先将其转换为JobImmutableInformation对象，而这个对象也正是客户端发送给服务端的对象
         jobImmutableInformation =
                 nodeEngine.getSerializationService().toObject(jobImmutableInformationData);
+        // 获取checkpoint的相关配置，例如周期，超时时间等
         jobCheckpointConfig =
                 createJobCheckpointConfig(
                         engineConfig.getCheckpointConfig(), jobImmutableInformation.getJobConfig());
@@ -230,12 +233,14 @@ public class JobMaster {
                         jobImmutableInformation.getJobId(),
                         jobImmutableInformation.getPluginJarsUrls()));
         ClassLoader appClassLoader = Thread.currentThread().getContextClassLoader();
+        // 获取ClassLoader
         ClassLoader classLoader =
                 seaTunnelServer
                         .getClassLoaderService()
                         .getClassLoader(
                                 jobImmutableInformation.getJobId(),
                                 jobImmutableInformation.getPluginJarsUrls());
+        // 将客户端传递的信息反序列化为逻辑计划
         logicalDag =
                 CustomClassLoadedObject.deserializeWithCustomClassLoader(
                         nodeEngine.getSerializationService(),
@@ -243,6 +248,7 @@ public class JobMaster {
                         jobImmutableInformation.getLogicalDag());
         try {
             Thread.currentThread().setContextClassLoader(classLoader);
+            // 在服务端会执行savemode的功能，例如对表进行创建，删除操作。
             if (!restart
                     && !logicalDag.isStartWithSavePoint()
                     && ReadonlyConfig.fromMap(logicalDag.getJobConfig().getEnvOptions())
@@ -255,6 +261,7 @@ public class JobMaster {
                         .forEach(JobMaster::handleSaveMode);
             }
 
+            // 逻辑计划到物理计划的解析
             final Tuple2<PhysicalPlan, Map<Integer, CheckpointPlan>> planTuple =
                     PlanUtils.fromLogicalDAG(
                             logicalDag,
@@ -272,6 +279,7 @@ public class JobMaster {
             this.checkpointPlanMap = planTuple.f1();
         } finally {
             // revert to app class loader, it may be changed by PlanUtils.fromLogicalDAG
+            // 重置当前线程的ClassLoader，并且释放上面创建的classLoader
             Thread.currentThread().setContextClassLoader(appClassLoader);
             seaTunnelServer
                     .getClassLoaderService()
@@ -281,10 +289,12 @@ public class JobMaster {
         }
         Exception initException = null;
         try {
+            // 初始化checkpointManager
             this.initCheckPointManager(restart);
         } catch (Exception e) {
             initException = e;
         }
+        // 添加一些回调函数做任务状态监听
         this.initStateFuture();
         if (initException != null) {
             if (restart) {
@@ -493,6 +503,7 @@ public class JobMaster {
 
     public void run() {
         try {
+            //对生成的物理计划调用run方法
             physicalPlan.startJob();
         } catch (Throwable e) {
             LOGGER.severe(

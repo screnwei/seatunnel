@@ -625,6 +625,7 @@ public class SubPlan {
                 break;
             case SCHEDULED:
                 try {
+                    //当状态为SCHEDULED时，会进行资源的申请，
                     ResourceUtils.applyResourceForPipeline(jobMaster, this);
                     log.debug(
                             "slotProfiles: {}, PipelineLocation: {}",

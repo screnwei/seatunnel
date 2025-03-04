@@ -69,9 +69,16 @@ public class LogicalDagGenerator {
         }
     }
 
+    /**
+     * 逻辑计划生成
+     * @return
+     */
     public LogicalDag generate() {
+        // 根据action来生成节点信息
         actions.forEach(this::createLogicalVertex);
+        // 创建边
         Set<LogicalEdge> logicalEdges = createLogicalEdges();
+        // 构建LogicalDag对象，并将解析的值设置到相应属性中
         LogicalDag logicalDag = new LogicalDag(jobConfig, idGenerator);
         logicalDag.getEdges().addAll(logicalEdges);
         logicalDag.getLogicalVertexMap().putAll(logicalVertexMap);
@@ -80,10 +87,15 @@ public class LogicalDagGenerator {
     }
 
     private void createLogicalVertex(Action action) {
+        // 获取当前action的id,判断当map中已经存在则返回
         final Long logicalVertexId = action.getId();
         if (logicalVertexMap.containsKey(logicalVertexId)) {
             return;
         }
+        // 对上游的依赖进行循环创建
+        // map对象的存储结构为：
+        // 当前节点的id为key
+        // value为一个list，存储下游使用到该节点的id编号
         // connection vertices info
         action.getUpstream()
                 .forEach(
@@ -94,9 +106,13 @@ public class LogicalDagGenerator {
                                             inputAction.getId(), id -> new LinkedHashSet<>())
                                     .add(logicalVertexId);
                         });
-
+        // 最后创建当前节点的信息
         final LogicalVertex logicalVertex =
                 new LogicalVertex(logicalVertexId, action, action.getParallelism());
+        // 注意这里有两个map
+        // 一个为inputVerticesMap，一个为logicalVertexMap
+        // inputVerticesMap中存储了节点之间的关系
+        // logicalVertexMap存储了节点编号与节点的关系
         logicalVertexMap.put(logicalVertexId, logicalVertex);
     }
 

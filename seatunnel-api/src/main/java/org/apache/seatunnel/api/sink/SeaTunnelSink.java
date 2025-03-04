@@ -75,13 +75,20 @@ public interface SeaTunnelSink<IN, StateT, CommitInfoT, AggregatedCommitInfoT>
 
     /**
      * This method will be called to creat {@link SinkWriter}
-     *
+     * 创建Writer实例，与Source类似，数据的实际写入是由Writer来写入。
      * @param context The sink context
      * @return Return sink writer instance
      * @throws IOException throws IOException when createWriter failed.
      */
     SinkWriter<IN, CommitInfoT, StateT> createWriter(SinkWriter.Context context) throws IOException;
 
+    /**
+     * 恢复 SinkWriter，Writer是真正执行数据写入的类
+     * @param context
+     * @param states
+     * @return
+     * @throws IOException
+     */
     default SinkWriter<IN, CommitInfoT, StateT> restoreWriter(
             SinkWriter.Context context, List<StateT> states) throws IOException {
         return createWriter(context);
@@ -98,7 +105,7 @@ public interface SeaTunnelSink<IN, StateT, CommitInfoT, AggregatedCommitInfoT>
 
     /**
      * This method will be called to create {@link SinkCommitter}
-     *
+     *  可选，在需要二阶段提交时，创建一个SinkCommitter，由SinkCommitter来完成二阶段提交, 此方式也不再推荐, 推荐使用
      * @return Return sink committer instance
      * @throws IOException throws IOException when createCommitter failed.
      */
@@ -118,6 +125,8 @@ public interface SeaTunnelSink<IN, StateT, CommitInfoT, AggregatedCommitInfoT>
 
     /**
      * This method will be called to create {@link SinkAggregatedCommitter}
+     * 可选，与SinkCommitter类似，都是在提交阶段进行二阶段提交使用。
+     * SinkAggregatedCommitter是单一实例去执行，不会存在多实例，将所有的提交任务集中到一个地方执行。所以如果连接器需要二阶段提交, 推荐使用createAggregatedCommitter()来创建
      *
      * @return Return sink aggregated committer instance
      * @throws IOException throws IOException when createAggregatedCommitter failed.

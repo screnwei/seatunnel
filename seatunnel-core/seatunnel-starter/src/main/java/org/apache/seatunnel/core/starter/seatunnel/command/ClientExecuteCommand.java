@@ -86,26 +86,32 @@ public class ClientExecuteCommand implements Command<ClientCommandArgs> {
         SeaTunnelConfig seaTunnelConfig = ConfigProvider.locateAndGetSeaTunnelConfig();
         try {
             String clusterName = clientCommandArgs.getClusterName();
+            // 获取Haselcast的客户端的配置
             ClientConfig clientConfig = ConfigProvider.locateAndGetClientConfig();
             //  get running mode
             boolean isLocalMode = clientCommandArgs.getMasterType().equals(MasterType.LOCAL);
             if (isLocalMode) {
+                //本地方式运行且没有设置集群名称，则会默认以SeaTunnel开头后面添加随机数，生成一个集群名称。
                 clusterName =
                         creatRandomClusterName(
                                 StringUtils.isNotEmpty(clusterName)
                                         ? clusterName
                                         : Constant.DEFAULT_SEATUNNEL_CLUSTER_NAME);
+                //然后创建一个本地的Hazelcast客户端，创建成功之后，记录下来Hazelcast的端口号，用于在执行SeaTunnel的Job时使用。
                 instance = createServerInLocal(clusterName, seaTunnelConfig);
                 int port = instance.getCluster().getLocalMember().getSocketAddress().getPort();
                 clientConfig
                         .getNetworkConfig()
                         .setAddresses(Collections.singletonList("localhost:" + port));
             }
+            // 与远程或本地的seatunnel server连接，创建一个engineClient
             if (StringUtils.isNotEmpty(clusterName)) {
                 seaTunnelConfig.getHazelcastConfig().setClusterName(clusterName);
                 clientConfig.setClusterName(clusterName);
             }
+            //创建一个SeaTunnel Engine的客户端，基于Hazelcast创建的。
             engineClient = new SeaTunnelClient(clientConfig);
+            //一列的判断，与任务恢复、状态等信息查询有关
             if (clientCommandArgs.isListJob()) {
                 String jobStatus = engineClient.getJobClient().listJobStatus(true);
                 System.out.println(jobStatus);
@@ -134,6 +140,7 @@ public class ClientExecuteCommand implements Command<ClientCommandArgs> {
                         .getJobClient()
                         .savePointJob(Long.parseLong(clientCommandArgs.getSavePointJobId()));
             } else {
+                //获取Job的配置文件，并对文件进行检查，然后创建Job配置对象。
                 Path configFile = FileUtils.getConfigPath(clientCommandArgs);
                 checkConfigExist(configFile);
                 JobConfig jobConfig = new JobConfig();
@@ -190,6 +197,7 @@ public class ClientExecuteCommand implements Command<ClientCommandArgs> {
                                         }));
                 // get job id
                 long jobId = clientJobProxy.getJobId();
+                //启动一个新的定时线程，用于打印监控信息。
                 JobMetricsRunner jobMetricsRunner = new JobMetricsRunner(engineClient, jobId);
                 executorService =
                         Executors.newScheduledThreadPool(

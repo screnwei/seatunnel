@@ -64,6 +64,8 @@ public class PipelineGenerator {
         List<ExecutionEdge> executionEdges = expandEdgeByParallelism(edges);
 
         // Split into multiple unrelated pipelines
+        // 将执行计划进行拆分，按照关联关系，将执行计划进行拆分
+        // 拆分为几个不相关的执行计划
         List<List<ExecutionEdge>> edgesList = splitUnrelatedEdges(executionEdges);
 
         edgesList =
@@ -74,6 +76,7 @@ public class PipelineGenerator {
         // just convert execution plan to pipeline at now. We should split it to multi pipeline with
         // cache in the future
         IdGenerator idGenerator = new IdGenerator();
+        // 将执行计划图转换为Pipeline
         return edgesList.stream()
                 .map(
                         e -> {

@@ -52,6 +52,8 @@ public interface SourceSplitEnumerator<SplitT extends SourceSplit, StateT>
      * Add a split back to the split enumerator. It will only happen when a {@link SourceReader}
      * fails and there are splits assigned to it after the last successful checkpoint.
      *
+     * 当某个reader出现异常后，需要将它运行的任务重新分配，此时需要将它运行的任务重新添加回队列中，后面进行重新分配到其他节点进行容错。
+     *
      * @param splits The split to add back to the enumerator for reassignment.
      * @param subtaskId The id of the subtask to which the returned splits belong.
      */
@@ -59,8 +61,16 @@ public interface SourceSplitEnumerator<SplitT extends SourceSplit, StateT>
 
     int currentUnassignedSplitSize();
 
+    /**
+     * reader主动向split enumerator进行请求，获取自己将要执行的抽取任务
+     * @param subtaskId
+     */
     void handleSplitRequest(int subtaskId);
 
+    /**
+     * reader主动向split enumerator进行注册
+     * @param subtaskId
+     */
     void registerReader(int subtaskId);
 
     /** If the source is bounded, checkpoint is not triggered. */
@@ -86,6 +96,11 @@ public interface SourceSplitEnumerator<SplitT extends SourceSplit, StateT>
         Set<Integer> registeredReaders();
 
         /** Assign the splits. */
+        /**
+         * split enumerator主动向某个reader推送任务
+         * @param subtaskId
+         * @param splits
+         */
         void assignSplit(int subtaskId, List<SplitT> splits);
 
         /**
@@ -104,6 +119,8 @@ public interface SourceSplitEnumerator<SplitT extends SourceSplit, StateT>
 
         /**
          * Signals a subtask that it will not receive any further split.
+         *
+         * split enumerator告诉某个reader，它后面将不会再有其他任务被分配
          *
          * @param subtask The index of the operator's parallel subtask that shall be signaled it
          *     will not receive any further split.

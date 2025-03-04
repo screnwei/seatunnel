@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.connectors.seatunnel.cdc.oracle.utils;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.seatunnel.api.table.catalog.CatalogTable;
 import org.apache.seatunnel.common.utils.SeaTunnelException;
 import org.apache.seatunnel.connectors.cdc.base.utils.CatalogTableUtils;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /** A component used to get schema by table path. */
+@Slf4j
 public class OracleSchema {
 
     private final OracleConnectorConfig connectorConfig;
@@ -85,6 +87,7 @@ public class OracleSchema {
                 }
             }
         } catch (SQLException e) {
+            log.error("Failed to read schema for table {}", tableId, e);
             throw new SeaTunnelException(
                     String.format("Failed to read schema for table %s ", tableId), e);
         }

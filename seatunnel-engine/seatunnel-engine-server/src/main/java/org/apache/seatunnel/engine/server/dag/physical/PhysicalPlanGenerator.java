@@ -152,6 +152,7 @@ public class PhysicalPlanGenerator {
     }
 
     public Tuple2<PhysicalPlan, Map<Integer, CheckpointPlan>> generate() {
+        // 获取用户配置中的节点过滤条件，用于选择任务将要运行的节点
         Map<String, String> tagFilter =
                 (Map<String, String>)
                         jobImmutableInformation
@@ -168,17 +169,23 @@ public class PhysicalPlanGenerator {
                 pipelines.stream()
                         .map(
                                 pipeline -> {
+                                    // 每次都将状态清空
                                     this.pipelineTasks.clear();
                                     this.startingTasks.clear();
                                     this.subtaskActions.clear();
                                     final int pipelineId = pipeline.getId();
+                                    // 获取当前任务的信息
                                     final List<ExecutionEdge> edges = pipeline.getEdges();
-
+                                    // 获取所有的SourceAction
                                     List<SourceAction<?, ?, ?>> sources = findSourceAction(edges);
-
+                                    // 生成Source数据切片任务，即SourceSplitEnumeratorTask，
+                                    // 这个任务会调用连接器中的SourceSplitEnumerator类，如果该连接器支持的话
                                     List<PhysicalVertex> coordinatorVertexList =
                                             getEnumeratorTask(
                                                     sources, pipelineId, totalPipelineNum);
+                                    // 生成Sink提交任务，即SinkAggregatedCommitterTask
+                                    // 这个任务会调用连接器中的SinkAggregatedCommitter类，如果该连接器支持的话
+                                    // 这两个任务是作为协调任务来执行的
                                     coordinatorVertexList.addAll(
                                             getCommitterTask(edges, pipelineId, totalPipelineNum));
 
@@ -193,7 +200,7 @@ public class PhysicalPlanGenerator {
                                             new CompletableFuture<>();
                                     waitForCompleteBySubPlanList.add(
                                             new PassiveCompletableFuture<>(pipelineFuture));
-
+                                    // 添加checkpoint的任务
                                     checkpointPlans.put(
                                             pipelineId,
                                             CheckpointPlan.builder()

@@ -92,10 +92,13 @@ public class DefaultSlotService implements SlotService {
                                         String.format(
                                                 "hz.%s.seaTunnel.slotService.thread",
                                                 nodeEngine.getHazelcastInstance().getName())));
+        //在SeaTunnel中会有一个动态Slot的概念，如果设置为true， 则每个节点就没有Slot的这样一个概念，可以提交任意数量的任务到此节点上，
+        // 如果设置为固定数量的Slot， 那么该节点仅能接受这些Slot数量的Task运行。
         if (!config.isDynamicSlot()) {
             initFixedSlots();
         }
         unassignedResource.set(getNodeResource());
+        // 启动一个线程，定时向Master节点发送心跳，心跳信息中则包含了当前节点的信息， 包括已经分配的、未分配的Slot数量等属性，Worker节点通过心跳将信息定时更新给Master。
         scheduledExecutorService.scheduleAtFixedRate(
                 () -> {
                     try {

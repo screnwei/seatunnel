@@ -25,6 +25,8 @@ public interface Factory {
     /**
      * Returns a unique identifier among same factory interfaces.
      *
+     * 进行连接器标识，每个连接器应该唯一
+     *
      * <p>For consistency, an identifier should be declared as one lower case word (e.g. {@code
      * kafka}). If multiple factories exist for different versions, a version should be appended
      * using "-" (e.g. {@code elasticsearch-7}).
@@ -33,6 +35,8 @@ public interface Factory {
 
     /**
      * Returns the rule for options.
+     *
+     * 声明该连接器所需要的参数，哪些是必填，哪些是选填，哪些一起填会存在冲突等等，在创建连接器时会先对配置参数来进行校验.
      *
      * <p>1. Used to verify whether the parameters configured by the user conform to the rules of
      * the options;

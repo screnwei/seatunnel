@@ -387,6 +387,7 @@ public class CoordinatorService {
     }
 
     private void initCoordinatorService() {
+        // 从hazelcast中获取分布式IMAP
         runningJobInfoIMap =
                 nodeEngine.getHazelcastInstance().getMap(Constant.IMAP_RUNNING_JOB_INFO);
         runningJobStateIMap =
@@ -397,6 +398,7 @@ public class CoordinatorService {
                 nodeEngine.getHazelcastInstance().getMap(Constant.IMAP_OWNED_SLOT_PROFILES);
         metricsImap = nodeEngine.getHazelcastInstance().getMap(Constant.IMAP_RUNNING_JOB_METRICS);
 
+        // 初始化JobHistoryService
         jobHistoryService =
                 new JobHistoryService(
                         nodeEngine,
@@ -412,6 +414,9 @@ public class CoordinatorService {
                                 .getHazelcastInstance()
                                 .getMap(Constant.IMAP_FINISHED_JOB_VERTEX_INFO),
                         engineConfig.getHistoryJobExpireMinutes());
+
+        // 初始化EventProcess, 用于发送事件到其他服务
+        //这个类是用来将事件通知到其他服务，比如任务失败，可以发送信息到配置的接口中，实现事件推送。
         eventProcessor =
                 createJobEventProcessor(
                         engineConfig.getEventReportHttpApi(),
@@ -425,6 +430,7 @@ public class CoordinatorService {
             connectorPackageService = new ConnectorPackageService(seaTunnelServer);
         }
 
+        // 集群恢复后, 尝试恢复之前的历史任务
         restoreAllJobFromMasterNodeSwitchFuture =
                 new PassiveCompletableFuture(
                         CompletableFuture.runAsync(
@@ -523,9 +529,13 @@ public class CoordinatorService {
         logger.info(String.format("The restore job enter pending queue, JobId: %s", jobId));
     }
 
+    /**
+     *
+     */
     private void checkNewActiveMaster() {
         try {
             if (!isActive && this.seaTunnelServer.isMasterNode()) {
+                // 检查当前阶段是否为Master节点， 当节点当前不是Master节点但在集群中成为Master节点时， 会调用initCoordinatorService()来进行状态的初始化， 并将状态修改为True。
                 logger.info(
                         "This node become a new active master node, begin init coordinator service");
                 if (this.executorService.isShutdown()) {
@@ -538,6 +548,7 @@ public class CoordinatorService {
                 initCoordinatorService();
                 isActive = true;
             } else if (isActive && !this.seaTunnelServer.isMasterNode()) {
+                //当节点自身标记为Master节点，但在集群中已不再是Master节点时，进行状态清理。
                 isActive = false;
                 logger.info(
                         "This node become leave active master node, begin clear coordinator service");
@@ -606,6 +617,7 @@ public class CoordinatorService {
         // Check if the current jobID is already running. If so, complete the submission
         // successfully.
         // This avoids potential issues like redundant job restores or other anomalies.
+        // 首先会根据任务id来判断，当存在相同任务的id时，直接返回
         if (getJobMaster(jobId) != null) {
             logger.warning(
                     String.format(
@@ -615,6 +627,7 @@ public class CoordinatorService {
         }
 
         MDCExecutorService mdcExecutorService = MDCTracer.tracing(jobId, executorService);
+        // 初始化JobMaster对象
         JobMaster jobMaster =
                 new JobMaster(
                         jobId,
@@ -633,6 +646,8 @@ public class CoordinatorService {
         mdcExecutorService.submit(
                 () -> {
                     try {
+                        // 由于2.3.6中任务id可以由用户传递，而在seatunnel中会根据任务id来做一些状态判断
+                        // 所以这里的检查是保证在当前的状态中，不会存在相同id的任务
                         if (!isStartWithSavePoint
                                 && getJobHistoryService().getJobMetrics(jobId)
                                         != JobMetrics.empty()) {
@@ -643,12 +658,15 @@ public class CoordinatorService {
                         }
                         pendingJobMasterMap.put(
                                 jobId, new Tuple2<>(PendingSourceState.SUBMIT, jobMaster));
+                        // 将当前任务的信息添加到IMAP中
                         runningJobInfoIMap.put(
                                 jobId,
                                 new JobInfo(System.currentTimeMillis(), jobImmutableInformation));
+                        // 对JobMaster做初始化操作
                         jobMaster.init(
                                 runningJobInfoIMap.get(jobId).getInitializationTimestamp(), false);
                         // We specify that when init is complete, the submitJob is complete
+                        // 当jobMaster初始化完成后，会认为任务创建成功
                         jobSubmitFuture.complete(null);
                     } catch (Throwable e) {
                         String errorMsg = ExceptionUtils.getMessage(e);
@@ -656,6 +674,8 @@ public class CoordinatorService {
                         jobSubmitFuture.completeExceptionally(new JobException(errorMsg));
                     }
                     if (!jobSubmitFuture.isCompletedExceptionally()) {
+                        // 当任务正常提交后，调用jobMaster的run方法开始执行任务
+                        // 以及最后会检查任务状态，从内部状态中将此次任务信息删除
                         pendingJob.put(jobMaster);
                         jobMaster.getPhysicalPlan().updateJobState(JobStatus.PENDING);
                         logger.info(

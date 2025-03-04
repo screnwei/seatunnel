@@ -31,6 +31,8 @@ import java.util.List;
  * The interface for Source. It acts like a factory class that helps construct the {@link
  * SourceSplitEnumerator} and {@link SourceReader} and corresponding serializers.
  *
+ * SeaTunnelSource是数据读取的接口定义， 在这个接口中， 定义了如何从某个数据源中抽取数据.
+ *
  * @param <T> The type of records produced by the source.
  * @param <SplitT> The type of splits handled by the source.
  * @param <StateT> The type of checkpoint states.
@@ -43,7 +45,7 @@ public interface SeaTunnelSource<T, SplitT extends SourceSplit, StateT extends S
 
     /**
      * Get the boundedness of this source.
-     *
+     * 返回当前Source的类型，是[有界批数据]还是[无界流数据]
      * @return the boundedness of this source.
      */
     Boundedness getBoundedness();
@@ -63,6 +65,8 @@ public interface SeaTunnelSource<T, SplitT extends SourceSplit, StateT extends S
      * Get the catalog tables output by this source, It is recommended that all connectors implement
      * this method instead of {@link #getProducedType}. CatalogTable contains more information to
      * help downstream support more accurate and complete synchronization capabilities.
+     *
+     * 当前SeaTunnel是支持多表读取的, 所以这里会返回一个list类型的结构，每个catalog则是对读取的表的元数据信息
      */
     default List<CatalogTable> getProducedCatalogTables() {
         throw new UnsupportedOperationException(
@@ -71,6 +75,8 @@ public interface SeaTunnelSource<T, SplitT extends SourceSplit, StateT extends S
 
     /**
      * Create source reader, used to produce data.
+     *
+     * 创建 Reader，Reader是真正去读取数据的类。 会依据这些SourceSplitEnumerator拆分的任务进行实际的任务读取
      *
      * @param readerContext reader context.
      * @return source reader.
@@ -91,7 +97,7 @@ public interface SeaTunnelSource<T, SplitT extends SourceSplit, StateT extends S
     /**
      * Create source split enumerator, used to generate splits. This method will be called only once
      * when start a source.
-     *
+     * 创建 SourceSplitEnumerator， 作用是对要抽取的数据进行任务拆分
      * @param enumeratorContext enumerator context.
      * @return source split enumerator.
      * @throws Exception when create enumerator failed.
@@ -102,6 +108,8 @@ public interface SeaTunnelSource<T, SplitT extends SourceSplit, StateT extends S
     /**
      * Create source split enumerator, used to generate splits. This method will be called when
      * restore from checkpoint.
+     *
+     * 恢复 SplitEnumerator
      *
      * @param enumeratorContext enumerator context.
      * @param checkpointState checkpoint state.

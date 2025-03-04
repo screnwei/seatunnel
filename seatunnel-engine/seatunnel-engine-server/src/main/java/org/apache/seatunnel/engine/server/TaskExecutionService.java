@@ -151,18 +151,21 @@ public class TaskExecutionService implements DynamicMetricsProvider {
             ClassLoaderService classLoaderService,
             NodeEngineImpl nodeEngine,
             EventService eventService) {
+        // 加载配置信息
         seaTunnelConfig = ConfigProvider.locateAndGetSeaTunnelConfig();
         this.hzInstanceName = nodeEngine.getHazelcastInstance().getName();
         this.nodeEngine = nodeEngine;
         this.classLoaderService = classLoaderService;
         this.logger = nodeEngine.getLoggingService().getLogger(TaskExecutionService.class);
 
+        //  指标相关
         MetricsRegistry registry = nodeEngine.getMetricsRegistry();
         MetricDescriptor descriptor =
                 registry.newMetricDescriptor()
                         .withTag(MetricTags.SERVICE, this.getClass().getSimpleName());
         registry.registerStaticMetrics(descriptor, this);
 
+        // 定时任务更新指标到IMAP中
         scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
         scheduledExecutorService.scheduleAtFixedRate(
                 this::updateMetricsContextInImap,

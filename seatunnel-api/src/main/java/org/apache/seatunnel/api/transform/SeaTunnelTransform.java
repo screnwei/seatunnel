@@ -43,6 +43,9 @@ public interface SeaTunnelTransform<T>
         throw new UnsupportedOperationException("setTypeInfo method is not supported");
     }
 
+    /**
+     * 获取Transform处理之后的数据结构
+     */
     /** Get the catalog table output by this transform */
     CatalogTable getProducedCatalogTable();
 

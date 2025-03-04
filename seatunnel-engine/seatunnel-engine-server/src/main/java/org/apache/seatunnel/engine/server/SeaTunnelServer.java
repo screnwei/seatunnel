@@ -163,10 +163,14 @@ public class SeaTunnelServer
     }
 
     private void startMaster() {
+        //协调组件
         coordinatorService =
                 new CoordinatorService(nodeEngine, this, seaTunnelConfig.getEngineConfig());
+        //检查点服务
         checkpointService =
                 new CheckpointService(seaTunnelConfig.getEngineConfig().getCheckpointConfig());
+
+        //监控组件周期性的打印集群信息。
         monitorService = Executors.newSingleThreadScheduledExecutor();
         monitorService.scheduleAtFixedRate(
                 this::printExecutionInfo,

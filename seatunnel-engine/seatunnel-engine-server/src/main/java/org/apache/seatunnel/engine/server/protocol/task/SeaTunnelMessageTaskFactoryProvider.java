@@ -40,6 +40,8 @@ import com.hazelcast.spi.impl.NodeEngine;
 import com.hazelcast.spi.impl.NodeEngineImpl;
 
 public class SeaTunnelMessageTaskFactoryProvider implements MessageTaskFactoryProvider {
+
+    //维护了一个消息类型到MessageTask的映射关系，也可以理解为客户端消息到服务端调用类的映射关系
     private final Int2ObjectHashMap<MessageTaskFactory> factories = new Int2ObjectHashMap<>(60);
     public final Node node;
 

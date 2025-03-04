@@ -47,6 +47,7 @@ public class ClientJobProxy implements Job {
     public ClientJobProxy(
             @NonNull SeaTunnelHazelcastClient seaTunnelHazelcastClient,
             @NonNull JobImmutableInformation jobImmutableInformation) {
+        //封装成一个任务，提交给Hazelcast去执行
         this.seaTunnelHazelcastClient = seaTunnelHazelcastClient;
         this.jobId = jobImmutableInformation.getJobId();
         submitJob(jobImmutableInformation);
@@ -68,6 +69,7 @@ public class ClientJobProxy implements Job {
                         "Start submit job, job id: %s, with plugin jar %s",
                         jobImmutableInformation.getJobId(),
                         jobImmutableInformation.getPluginJarsUrls()));
+        //客户端向服务端发送的是一条类型为SeaTunnelSubmitJobCodec的消息
         ClientMessage request =
                 SeaTunnelSubmitJobCodec.encodeRequest(
                         jobImmutableInformation.getJobId(),
