@@ -4,7 +4,7 @@
       "base-url": "jdbc:mysql://10.56.130.162:8039",
       "enable_upsert_delete": true,
       "password": "rtaadmin",
-      "database": "test_20250224",
+      "database": "test_20250306",
       "batch_max_rows": "10240",
       "save_mode_create_template": "CREATE TABLE IF NOT EXISTS `${database}`.`${table_name}` ( ID BIGINT NOT NULL, ${rowtype_fields} ) ENGINE = OLAP PRIMARY KEY (${rowtype_primary_key}) DISTRIBUTED BY HASH (${rowtype_primary_key}) PROPERTIES (\"replication_num\" = \"1\");",
       "starrocks.config": {

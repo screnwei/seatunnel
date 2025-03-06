@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.connectors.seatunnel.cdc.oracle.source.reader.fetch.scan;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.seatunnel.connectors.cdc.base.relational.JdbcSourceEventDispatcher;
 import org.apache.seatunnel.connectors.cdc.base.source.split.SnapshotSplit;
 import org.apache.seatunnel.connectors.cdc.base.source.split.wartermark.WatermarkKind;
@@ -164,6 +165,13 @@ public class OracleSnapshotSplitReadTask
     @Override
     protected SnapshotContext<OraclePartition, OracleOffsetContext> prepare(
             OraclePartition partition) throws Exception {
+        String currentContainerName = OracleConnectionUtils.getCurrentContainerName(jdbcConnection);
+        String pdbName = connectorConfig.getPdbName() ;
+        if (pdbName != null) {
+            if(StringUtils.equalsAnyIgnoreCase(currentContainerName, "cdb$root")) {
+                jdbcConnection.setSessionToPdb(connectorConfig.getPdbName());
+            }
+        }
         return new OracleSnapshotContext(partition);
     }
 
